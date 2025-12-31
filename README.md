@@ -8,7 +8,7 @@ A Rust driver library for the MUSES72323 electronic volume controller IC.
 
 ## Overview
 
-The MUSES72323 is a high-quality 2-channel electronic volume controller IC manufactured by New Japan Radio Co., Ltd. This crate provides type-safe, zero-cost abstractions for controlling the MUSES72323 via its serial interface.
+The MUSES72323 is a high-quality 2-channel electronic volume controller IC manufactured by Nisshinbo Micro Devices Inc. This crate provides type-safe, zero-cost abstractions for controlling the MUSES72323 via its serial interface.
 
 ### Key Features
 
@@ -243,7 +243,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## References
 
-- [MUSES72323 Datasheet](https://www.njr.com/electronic_device/products/MUSES72323.html)
+- [MUSES72323 Datasheet](https://www.nisshinbo-microdevices.co.jp/ja/pdf/datasheet/MUSES72323_J.pdf)
 - [Repository](https://github.com/ruimo/muses72323)
 - [Documentation](https://docs.rs/muses72323)
 
