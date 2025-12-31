@@ -64,20 +64,20 @@ impl Channel {
 pub struct SetVolume {
     /// Chip address. Must match the state of ADR0, ADR1 (chip address selection pins).
     #[bits(2)]
-    chip_addr: u8,
+    pub chip_addr: u8,
     /// Channel.
     #[bits(2)]
-    channel: Channel,
+    pub channel: Channel,
     /// Soft step circuit ON/OFF control.
     /// The soft step function reduces zipper noise during gain adjustment by changing the gain setting gradually.
-    is_soft_step: bool,
+    pub is_soft_step: bool,
     /// Fixed to 0
     #[bits(2)]
     __: u8,
     /// Controls each volume from 0dB to -111.75dB (0.25dB step).
     /// Each volume is controlled independently when L/R Cont="0".
     #[bits(9)]
-    volume: u16,
+    pub volume: u16,
 }
 
 /// Represents gain specification.
@@ -171,20 +171,20 @@ impl Gain {
 pub struct SetGain {
     /// Chip address. Must match the state of ADR0, ADR1 (chip address selection pins).
     #[bits(2)]
-    chip_addr: u8,
+    pub chip_addr: u8,
     /// Fixed to 0b000010.
     #[bits(6, default = 0b000010)]
     __: u8,
     /// Turn off zero-cross detection circuit.
-    zero_cross_off: bool,
+    pub zero_cross_off: bool,
     /// Controls right channel gain from 0dB to +21dB (+3dB/step).
     #[bits(3)]
-    r_gain: Gain,
+    pub r_gain: Gain,
     /// Controls left channel gain from 0dB to +21dB (+3dB/step).
     #[bits(3)]
-    l_gain: Gain,
+    pub l_gain: Gain,
     /// Sets independent/linked control of L channel Volume and R channel Volume.
-    l_r_cont: bool,
+    pub l_r_cont: bool,
 }
 
 /// Clock division ratio
@@ -318,18 +318,18 @@ impl ZeroWindowVolt {
 pub struct SoftClock {
     /// Chip address. Must match the state of ADR0, ADR1 (chip address selection pins).
     #[bits(2)]
-    chip_addr: u8,
+    pub chip_addr: u8,
     /// Fixed to 0b0000011.
     #[bits(7, default = 0b0000011)]
     __: u8,
     /// Use internal clock operation.
-    internal_clock: bool,
+    pub internal_clock: bool,
     /// Clock division ratio
     #[bits(3)]
-    clock_div: ClockDiv,
+    pub clock_div: ClockDiv,
     /// Zero-cross detection voltage width
     #[bits(2)]
-    zero_window_volt: ZeroWindowVolt,
+    pub zero_window_volt: ZeroWindowVolt,
     /// Fixed to 0
     #[bits(1)]
     __: u8,
