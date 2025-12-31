@@ -4,7 +4,7 @@ use bitfield_struct::bitfield;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Channel {
-    /// L channel if [`SetGain`]'s [`l_r_cont`](SetGain::l_r_cont) is false. Both channels if [`l_r_cont`](SetGain::l_r_cont) is true.
+    /// L channel if [`SetGain`]'s [`l_r_cont`](SetGain.l_r_cont) is false. Both channels if [`l_r_cont`](SetGain.l_r_cont) is true.
     LorBoth = 0,
     /// R channel. Cannot be specified when [`SetGain`]'s [`l_r_cont`](SetGain::l_r_cont) is true.
     R = 1,
