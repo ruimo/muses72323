@@ -15,7 +15,7 @@ dependencies = [
 
 [[package]]
 name = "muses72323"
-version = "0.1.1-beta.4"
+version = "0.1.1"
 dependencies = [
  "bitfield-struct",
 ]
