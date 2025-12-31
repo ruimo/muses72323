@@ -1,0 +1,15 @@
+[package]
+name = "muses72323"
+version = "0.1.0-beta.1"
+edition = "2024"
+authors = ["Shisei Hanai <ruimo.uno@gmail.com>"]
+description = "A Rust driver library for the MUSES72323 electronic volume controller IC"
+license = "Apache-2.0"
+repository = "https://github.com/ruimo/muses72323"
+documentation = "https://docs.rs/muses72323"
+readme = "README.md"
+keywords = ["audio", "volume", "controller", "muses72323", "embedded"]
+categories = ["embedded", "hardware-support", "no-std"]
+
+[dependencies]
+bitfield-struct = "0.12.1"
