@@ -3,11 +3,11 @@ use bitfield_struct::bitfield;
 /// Volume level value (0 to 447)
 ///
 /// Maps to actual hardware values:
-/// - `0` → 479 (0dB, maximum volume)
-/// - `1` → 478 (-0.25dB)
-/// - `2` → 477 (-0.5dB)
+/// - `0` → 479 (-111.75dB, minimum volume)
+/// - `1` → 478 (-111.5dB)
+/// - `2` → 477 (-111.25dB)
 /// - ...
-/// - `447` → 32 (-111.75dB, minimum volume)
+/// - `447` → 32 (0dB, maximum volume)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct VolumeValue(u16);
 
@@ -38,14 +38,14 @@ impl VolumeValue {
     ///
     /// # Examples
     /// ```
-    /// use muses72323::commands::VolumeValue;
+    /// use muses72323::commands::{VolumeValue, Volume};
     /// use core::convert::TryFrom;
     ///
     /// let vol = VolumeValue::try_from(0).unwrap();
-    /// assert_eq!(vol.to_hardware_value(), 479); // 0 → 479 (max)
+    /// assert_eq!(vol.to_hardware_value(), Volume::MAX_HW); // 0 → 479 (min)
     ///
     /// let vol = VolumeValue::try_from(447).unwrap();
-    /// assert_eq!(vol.to_hardware_value(), 32);  // 447 → 32 (min)
+    /// assert_eq!(vol.to_hardware_value(), Volume::MIN_HW);  // 447 → 32 (max)
     /// ```
     pub const fn to_hardware_value(self) -> u16 {
         Volume::MAX_HW - self.0
@@ -134,7 +134,6 @@ impl core::fmt::Display for InvalidVolumeError {
     }
 }
 
-#[cfg(feature = "std")]
 impl std::error::Error for InvalidVolumeError {}
 
 impl Volume {
