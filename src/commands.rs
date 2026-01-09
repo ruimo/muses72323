@@ -1,5 +1,249 @@
 use bitfield_struct::bitfield;
 
+/// Volume level value (0 to 447)
+///
+/// Maps to actual hardware values:
+/// - `0` → 479 (0dB, maximum volume)
+/// - `1` → 478 (-0.25dB)
+/// - `2` → 477 (-0.5dB)
+/// - ...
+/// - `447` → 32 (-111.75dB, minimum volume)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct VolumeValue(u16);
+
+/// Error type for invalid volume level values
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InvalidVolumeValueError(u16);
+
+impl core::fmt::Display for InvalidVolumeValueError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "Invalid volume level value: {}. Must be in range 0-447",
+            self.0
+        )
+    }
+}
+
+impl std::error::Error for InvalidVolumeValueError {}
+
+impl VolumeValue {
+    /// Maximum volume level value
+    pub const MAX: u16 = Volume::MAX_HW - Volume::MIN_HW;
+
+    /// Converts to the actual hardware value (32-479)
+    ///
+    /// # Returns
+    /// Hardware value in range 32-479
+    ///
+    /// # Examples
+    /// ```
+    /// use muses72323::commands::VolumeValue;
+    /// use core::convert::TryFrom;
+    ///
+    /// let vol = VolumeValue::try_from(0).unwrap();
+    /// assert_eq!(vol.to_hardware_value(), 479); // 0 → 479 (max)
+    ///
+    /// let vol = VolumeValue::try_from(447).unwrap();
+    /// assert_eq!(vol.to_hardware_value(), 32);  // 447 → 32 (min)
+    /// ```
+    pub const fn to_hardware_value(self) -> u16 {
+        Volume::MAX_HW - self.0
+    }
+
+    /// Creates from hardware value (32-479)
+    ///
+    /// # Arguments
+    /// * `hw_value` - Hardware value (32-479)
+    ///
+    /// # Returns
+    /// `Ok(VolumeValue)` if valid, `Err` otherwise
+    pub const fn from_hardware_value(hw_value: u16) -> Result<Self, InvalidVolumeValueError> {
+        if hw_value >= Volume::MIN_HW && hw_value <= Volume::MAX_HW {
+            Ok(VolumeValue(Volume::MAX_HW - hw_value))
+        } else {
+            Err(InvalidVolumeValueError(hw_value))
+        }
+    }
+
+    /// Gets the raw value (0-447)
+    pub const fn get(self) -> u16 {
+        self.0
+    }
+}
+
+impl TryFrom<u16> for VolumeValue {
+    type Error = InvalidVolumeValueError;
+
+    /// Attempts to create a VolumeValue from a u16
+    ///
+    /// # Arguments
+    /// * `value` - Volume level (0-447)
+    ///
+    /// # Examples
+    /// ```
+    /// use muses72323::commands::VolumeValue;
+    /// use core::convert::TryFrom;
+    ///
+    /// let min_volume = VolumeValue::try_from(0).unwrap();   // -111.75dB
+    /// let max_volume = VolumeValue::try_from(447).unwrap(); // 0dB
+    /// assert!(VolumeValue::try_from(448).is_err());         // Out of range
+    /// ```
+    fn try_from(value: u16) -> Result<Self, Self::Error> {
+        if value <= Self::MAX {
+            Ok(VolumeValue(value))
+        } else {
+            Err(InvalidVolumeValueError(value))
+        }
+    }
+}
+
+impl From<VolumeValue> for u16 {
+    fn from(value: VolumeValue) -> Self {
+        value.0
+    }
+}
+
+/// Volume value for SetVolume command
+///
+/// Valid values are:
+/// - `Mute0`: MUTE (0b000000000)
+/// - `Mute511`: MUTE (0b111111111)
+/// - `Volume(VolumeValue)`: Valid volume range from 0 (-111.75dB) to 447 (0dB), maps to hardware values MIN_RAW_VOLUME-MAX_RAW_VOLUME
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Volume {
+    /// Mute (value: 0)
+    Mute0,
+    /// Mute (value: 511)
+    Mute511,
+    /// Volume level (0-447, maps to hardware values MIN_RAW_VOLUME-MAX_RAW_VOLUME)
+    Volume(VolumeValue),
+}
+
+/// Error type for invalid volume values
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InvalidVolumeError(u16);
+
+impl core::fmt::Display for InvalidVolumeError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "Invalid volume value: {}. Must be 0, 511, or in range {}-{}",
+            self.0, Volume::MIN_HW, Volume::MAX_HW
+        )
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for InvalidVolumeError {}
+
+impl Volume {
+    /// Minimum valid hardware volume value (excluding mute)
+    pub const MIN_HW: u16 = 32;
+    
+    /// Maximum valid hardware volume value (excluding mute)
+    pub const MAX_HW: u16 = 479;
+
+    /// Converts the volume to its bit representation
+    ///
+    /// # Returns
+    /// A 9-bit value (0-511)
+    ///
+    /// # Examples
+    /// ```
+    /// use muses72323::commands::{Volume, VolumeValue};
+    /// use core::convert::TryFrom;
+    ///
+    /// assert_eq!(Volume::Mute0.into_bits(), 0);
+    /// assert_eq!(Volume::Mute511.into_bits(), 511);
+    ///
+    /// let vol = VolumeValue::try_from(0).unwrap();
+    /// assert_eq!(Volume::Volume(vol).into_bits(), Volume::MAX_HW);
+    ///
+    /// let vol = VolumeValue::try_from(447).unwrap();
+    /// assert_eq!(Volume::Volume(vol).into_bits(), Volume::MIN_HW);
+    /// ```
+    pub const fn into_bits(self) -> u16 {
+        match self {
+            Volume::Mute0 => 0,
+            Volume::Mute511 => 0b111111111,
+            Volume::Volume(v) => v.to_hardware_value(),
+        }
+    }
+
+    /// Checks if this volume represents mute
+    ///
+    /// # Returns
+    /// `true` if the volume is `Mute0` or `Mute511`, `false` otherwise
+    ///
+    /// # Examples
+    /// ```
+    /// use muses72323::commands::{Volume, VolumeValue};
+    /// use core::convert::TryFrom;
+    ///
+    /// assert!(Volume::Mute0.is_mute());
+    /// assert!(Volume::Mute511.is_mute());
+    ///
+    /// let vol = VolumeValue::try_from(100).unwrap();
+    /// assert!(!Volume::Volume(vol).is_mute());
+    /// ```
+    pub const fn is_mute(self) -> bool {
+        matches!(self, Volume::Mute0 | Volume::Mute511)
+    }
+}
+
+impl TryFrom<u16> for Volume {
+    type Error = InvalidVolumeError;
+
+    /// Attempts to create a Volume from a u16 hardware value
+    ///
+    /// # Arguments
+    /// * `value` - Hardware volume value (9 bits, 0-511)
+    ///
+    /// # Returns
+    /// - `Ok(Volume)` if the value is valid (0, 32-479, or 511)
+    /// - `Err(InvalidVolumeError)` if the value is invalid
+    ///
+    /// # Examples
+    /// ```
+    /// use muses72323::commands::Volume;
+    /// use core::convert::TryFrom;
+    ///
+    /// // Valid values
+    /// assert_eq!(Volume::try_from(0).unwrap(), Volume::Mute0);
+    /// assert_eq!(Volume::try_from(511).unwrap(), Volume::Mute511);
+    ///
+    /// // Hardware values roundtrip correctly
+    /// let vol = Volume::try_from(Volume::MIN_HW).unwrap();
+    /// assert_eq!(vol.into_bits(), Volume::MIN_HW);
+    ///
+    /// let vol = Volume::try_from(Volume::MAX_HW).unwrap();
+    /// assert_eq!(vol.into_bits(), Volume::MAX_HW);
+    ///
+    /// // Invalid values
+    /// assert!(Volume::try_from(1).is_err());   // Between 1-31
+    /// assert!(Volume::try_from(31).is_err());  // Between 1-31
+    /// assert!(Volume::try_from(480).is_err()); // Between 480-510
+    /// assert!(Volume::try_from(510).is_err()); // Between 480-510
+    /// ```
+    fn try_from(value: u16) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Volume::Mute0),
+            0b111111111 => Ok(Volume::Mute511),
+            v if v >= Self::MIN_HW && v <= Self::MAX_HW => {
+                Ok(Volume::Volume(VolumeValue(Self::MAX_HW - v)))
+            }
+            _ => Err(InvalidVolumeError(value)),
+        }
+    }
+}
+
+impl From<Volume> for u16 {
+    fn from(volume: Volume) -> Self {
+        volume.into_bits()
+    }
+}
+
 /// Channel
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -45,18 +289,32 @@ impl Channel {
 /// - `with_chip_addr(u8)` - Sets the chip address (2 bits)
 /// - `with_channel(Channel)` - Sets the channel
 /// - `with_is_soft_step(bool)` - Enables/disables soft step circuit
-/// - `with_volume(u16)` - Sets the volume (9 bits, 0-511)
+/// - `with_volume(u16)` - Sets the volume using raw hardware value (9 bits, 0-511)
+///
+/// Additional helper methods:
+/// - `safe_with_volume(Volume)` - Sets the volume using the type-safe Volume type
+/// - `volume_value()` - Gets the volume as a Volume type (returns Result)
 ///
 /// # Example
 ///
 /// ```
-/// use muses72323::commands::{SetVolume, Channel};
+/// use muses72323::commands::{SetVolume, Channel, Volume, VolumeValue};
+/// use core::convert::TryFrom;
 ///
+/// // Using typed Volume (type-safe)
+/// let vol = VolumeValue::try_from(100).unwrap();
 /// let cmd = SetVolume::new()
 ///     .with_chip_addr(0b11)
 ///     .with_channel(Channel::R)
 ///     .with_is_soft_step(true)
-///     .with_volume(0b101010101);
+///     .safe_with_volume(Volume::Volume(vol));
+///
+/// // Using mute
+/// let cmd2 = SetVolume::new()
+///     .with_chip_addr(0b11)
+///     .with_channel(Channel::R)
+///     .with_is_soft_step(true)
+///     .safe_with_volume(Volume::Mute0);
 ///
 /// let raw: u16 = cmd.into();
 /// ```
@@ -76,8 +334,49 @@ pub struct SetVolume {
     __: u8,
     /// Controls each volume from 0dB to -111.75dB (0.25dB step).
     /// Each volume is controlled independently when L/R Cont="0".
+    /// Use `safe_with_volume()` for type-safe setting with Volume type.
     #[bits(9)]
     pub volume: u16,
+}
+
+impl SetVolume {
+    /// Sets the volume using the type-safe Volume type
+    ///
+    /// # Arguments
+    /// * `vol` - Volume value (Mute0, Mute511, or Volume(VolumeValue))
+    ///
+    /// # Example
+    /// ```
+    /// use muses72323::commands::{SetVolume, Volume, VolumeValue};
+    /// use core::convert::TryFrom;
+    ///
+    /// let vol = VolumeValue::try_from(200).unwrap();
+    /// let cmd = SetVolume::new().safe_with_volume(Volume::Volume(vol));
+    ///
+    /// let mute_cmd = SetVolume::new().safe_with_volume(Volume::Mute0);
+    /// ```
+    pub const fn safe_with_volume(self, vol: Volume) -> Self {
+        self.with_volume(vol.into_bits())
+    }
+
+    /// Gets the volume as a Volume type
+    ///
+    /// # Returns
+    /// - `Ok(Volume)` if the stored value is valid
+    /// - `Err(InvalidVolumeError)` if the stored value is invalid
+    ///
+    /// # Example
+    /// ```
+    /// use muses72323::commands::{SetVolume, Volume};
+    ///
+    /// let vol = Volume::Mute0;
+    /// let cmd = SetVolume::new().safe_with_volume(vol);
+    /// let retrieved = cmd.volume_value().unwrap();
+    /// assert_eq!(retrieved, vol);
+    /// ```
+    pub fn volume_value(self) -> Result<Volume, InvalidVolumeError> {
+        Volume::try_from(self.volume())
+    }
 }
 
 /// Represents gain specification.
@@ -672,5 +971,339 @@ mod tests {
         
         assert!(internal_decoded.internal_clock());
         assert!(!external_decoded.internal_clock());
+    }
+
+    // Type-safe Volume tests
+    #[test]
+    fn test_volume_value_valid_range() {
+        // Test minimum value
+        let min = VolumeValue::try_from(0).unwrap();
+        assert_eq!(min.get(), 0);
+        assert_eq!(min.to_hardware_value(), Volume::MAX_HW);
+
+        // Test maximum value
+        let max = VolumeValue::try_from(VolumeValue::MAX).unwrap();
+        assert_eq!(max.get(), VolumeValue::MAX);
+        assert_eq!(max.to_hardware_value(), Volume::MIN_HW);
+
+        // Test middle value
+        let mid = VolumeValue::try_from(223).unwrap();
+        assert_eq!(mid.get(), 223);
+        assert_eq!(mid.to_hardware_value(), Volume::MAX_HW - 223);
+    }
+
+    #[test]
+    fn test_volume_value_invalid_range() {
+        // Test values beyond maximum
+        assert!(VolumeValue::try_from(VolumeValue::MAX + 1).is_err());
+        assert!(VolumeValue::try_from(448).is_err());
+        assert!(VolumeValue::try_from(500).is_err());
+        assert!(VolumeValue::try_from(u16::MAX).is_err());
+    }
+
+    #[test]
+    fn test_volume_value_from_hardware_value() {
+        // Test minimum hardware value
+        let min = VolumeValue::from_hardware_value(Volume::MIN_HW).unwrap();
+        assert_eq!(min.get(), VolumeValue::MAX);
+
+        // Test maximum hardware value
+        let max = VolumeValue::from_hardware_value(Volume::MAX_HW).unwrap();
+        assert_eq!(max.get(), 0);
+
+        // Test middle hardware value
+        let mid = VolumeValue::from_hardware_value(255).unwrap();
+        assert_eq!(mid.get(), Volume::MAX_HW - 255);
+
+        // Test invalid hardware values
+        assert!(VolumeValue::from_hardware_value(0).is_err());
+        assert!(VolumeValue::from_hardware_value(31).is_err());
+        assert!(VolumeValue::from_hardware_value(Volume::MAX_HW + 1).is_err());
+        assert!(VolumeValue::from_hardware_value(500).is_err());
+    }
+
+    #[test]
+    fn test_volume_value_conversions() {
+        // Test u16 conversion
+        let vol = VolumeValue::try_from(100).unwrap();
+        let as_u16: u16 = vol.into();
+        assert_eq!(as_u16, 100);
+
+        // Test roundtrip conversion
+        let original = 250u16;
+        let vol = VolumeValue::try_from(original).unwrap();
+        let back: u16 = vol.into();
+        assert_eq!(back, original);
+    }
+
+    #[test]
+    fn test_volume_value_ordering() {
+        let vol1 = VolumeValue::try_from(100).unwrap();
+        let vol2 = VolumeValue::try_from(200).unwrap();
+        let vol3 = VolumeValue::try_from(100).unwrap();
+
+        assert!(vol1 < vol2);
+        assert!(vol2 > vol1);
+        assert_eq!(vol1, vol3);
+        assert!(vol1 <= vol3);
+        assert!(vol1 >= vol3);
+    }
+
+    #[test]
+    fn test_volume_mute_variants() {
+        // Test Mute0
+        assert_eq!(Volume::Mute0.into_bits(), 0);
+        assert!(Volume::Mute0.is_mute());
+
+        // Test Mute511
+        assert_eq!(Volume::Mute511.into_bits(), 0b111111111);
+        assert!(Volume::Mute511.is_mute());
+
+        // Test Volume variant is not mute
+        let vol = VolumeValue::try_from(100).unwrap();
+        assert!(!Volume::Volume(vol).is_mute());
+    }
+
+    #[test]
+    fn test_volume_from_hardware_value() {
+        // Test Mute0
+        let mute0 = Volume::try_from(0).unwrap();
+        assert_eq!(mute0, Volume::Mute0);
+        assert!(mute0.is_mute());
+
+        // Test Mute511
+        let mute511 = Volume::try_from(511).unwrap();
+        assert_eq!(mute511, Volume::Mute511);
+        assert!(mute511.is_mute());
+
+        // Test minimum hardware value (32) → creates VolumeValue(447) → converts back to 32
+        let min_hw_vol = Volume::try_from(Volume::MIN_HW).unwrap();
+        assert!(!min_hw_vol.is_mute());
+        assert_eq!(min_hw_vol.into_bits(), Volume::MIN_HW);
+
+        // Test maximum hardware value (479) → creates VolumeValue(0) → converts back to 479
+        let max_hw_vol = Volume::try_from(Volume::MAX_HW).unwrap();
+        assert!(!max_hw_vol.is_mute());
+        assert_eq!(max_hw_vol.into_bits(), Volume::MAX_HW);
+
+        // Test middle volume - should roundtrip
+        let mid_vol = Volume::try_from(255).unwrap();
+        assert!(!mid_vol.is_mute());
+        assert_eq!(mid_vol.into_bits(), 255);
+    }
+
+    #[test]
+    fn test_volume_invalid_hardware_values() {
+        // Test invalid values between 1-31
+        for i in 1..Volume::MIN_HW {
+            assert!(Volume::try_from(i).is_err(), "Value {} should be invalid", i);
+        }
+
+        // Test invalid values between 480-510
+        for i in (Volume::MAX_HW + 1)..511 {
+            assert!(Volume::try_from(i).is_err(), "Value {} should be invalid", i);
+        }
+    }
+
+    #[test]
+    fn test_volume_roundtrip_conversion() {
+        // Test Mute0 roundtrip
+        let mute0 = Volume::Mute0;
+        let bits = mute0.into_bits();
+        let back = Volume::try_from(bits).unwrap();
+        assert_eq!(back, mute0);
+
+        // Test Mute511 roundtrip
+        let mute511 = Volume::Mute511;
+        let bits = mute511.into_bits();
+        let back = Volume::try_from(bits).unwrap();
+        assert_eq!(back, mute511);
+
+        // Test Volume variant roundtrip
+        let vol_value = VolumeValue::try_from(200).unwrap();
+        let vol = Volume::Volume(vol_value);
+        let bits = vol.into_bits();
+        let back = Volume::try_from(bits).unwrap();
+        assert_eq!(back.into_bits(), vol.into_bits());
+    }
+
+    #[test]
+    fn test_set_volume_with_safe_volume() {
+        // Test with VolumeValue
+        let vol_value = VolumeValue::try_from(100).unwrap();
+        let cmd = SetVolume::new()
+            .with_chip_addr(0b10)
+            .with_channel(Channel::LorBoth)
+            .with_is_soft_step(true)
+            .safe_with_volume(Volume::Volume(vol_value));
+
+        assert_eq!(cmd.volume(), vol_value.to_hardware_value());
+        let retrieved = cmd.volume_value().unwrap();
+        assert_eq!(retrieved.into_bits(), Volume::Volume(vol_value).into_bits());
+
+        // Test with Mute0
+        let mute_cmd = SetVolume::new()
+            .with_chip_addr(0b10)
+            .with_channel(Channel::R)
+            .with_is_soft_step(false)
+            .safe_with_volume(Volume::Mute0);
+
+        assert_eq!(mute_cmd.volume(), 0);
+        let retrieved_mute = mute_cmd.volume_value().unwrap();
+        assert_eq!(retrieved_mute, Volume::Mute0);
+        assert!(retrieved_mute.is_mute());
+
+        // Test with Mute511
+        let mute511_cmd = SetVolume::new()
+            .with_chip_addr(0b11)
+            .with_channel(Channel::LorBoth)
+            .with_is_soft_step(true)
+            .safe_with_volume(Volume::Mute511);
+
+        assert_eq!(mute511_cmd.volume(), 511);
+        let retrieved_mute511 = mute511_cmd.volume_value().unwrap();
+        assert_eq!(retrieved_mute511, Volume::Mute511);
+        assert!(retrieved_mute511.is_mute());
+    }
+
+    #[test]
+    fn test_set_volume_boundary_values() {
+        // Test minimum volume (0 → 479)
+        let min_vol = VolumeValue::try_from(0).unwrap();
+        let cmd = SetVolume::new().safe_with_volume(Volume::Volume(min_vol));
+        assert_eq!(cmd.volume(), Volume::MAX_HW);
+
+        // Test maximum volume (447 → 32)
+        let max_vol = VolumeValue::try_from(VolumeValue::MAX).unwrap();
+        let cmd = SetVolume::new().safe_with_volume(Volume::Volume(max_vol));
+        assert_eq!(cmd.volume(), Volume::MIN_HW);
+    }
+
+    #[test]
+    fn test_set_volume_complete_roundtrip() {
+        // Create command with type-safe volume
+        let vol_value = VolumeValue::try_from(300).unwrap();
+        let original_cmd = SetVolume::new()
+            .with_chip_addr(0b11)
+            .with_channel(Channel::R)
+            .with_is_soft_step(true)
+            .safe_with_volume(Volume::Volume(vol_value));
+
+        // Convert to u16
+        let raw: u16 = original_cmd.into();
+
+        // Convert back to SetVolume
+        let decoded_cmd = SetVolume::from(raw);
+
+        // Verify all fields
+        assert_eq!(decoded_cmd.chip_addr(), 0b11);
+        assert_eq!(decoded_cmd.channel(), Channel::R);
+        assert!(decoded_cmd.is_soft_step());
+        assert_eq!(decoded_cmd.volume(), vol_value.to_hardware_value());
+
+        // Verify volume can be retrieved as Volume type
+        let retrieved_vol = decoded_cmd.volume_value().unwrap();
+        assert_eq!(retrieved_vol.into_bits(), Volume::Volume(vol_value).into_bits());
+        assert!(!retrieved_vol.is_mute());
+    }
+
+    #[test]
+    fn test_volume_value_error_display() {
+        let err = VolumeValue::try_from(500).unwrap_err();
+        let msg = format!("{}", err);
+        assert!(msg.contains("Invalid volume level value"));
+        assert!(msg.contains("500"));
+        assert!(msg.contains("0-447"));
+    }
+
+    #[test]
+    fn test_volume_error_display() {
+        let err = Volume::try_from(15).unwrap_err();
+        let msg = format!("{}", err);
+        assert!(msg.contains("Invalid volume value"));
+        assert!(msg.contains("15"));
+        assert!(msg.contains("32"));
+        assert!(msg.contains("479"));
+    }
+
+    #[test]
+    fn test_volume_all_valid_hardware_values() {
+        // Test all valid hardware values in the range - should roundtrip
+        for hw_val in Volume::MIN_HW..=Volume::MAX_HW {
+            let vol = Volume::try_from(hw_val).unwrap();
+            assert_eq!(vol.into_bits(), hw_val);
+            assert!(!vol.is_mute());
+        }
+    }
+
+    #[test]
+    fn test_volume_value_all_valid_values() {
+        // Test all valid VolumeValue values
+        for val in 0..=VolumeValue::MAX {
+            let vol_value = VolumeValue::try_from(val).unwrap();
+            assert_eq!(vol_value.get(), val);
+            assert_eq!(vol_value.to_hardware_value(), Volume::MAX_HW - val);
+            
+            // Verify roundtrip through hardware value
+            let from_hw = VolumeValue::from_hardware_value(vol_value.to_hardware_value()).unwrap();
+            assert_eq!(from_hw.get(), val);
+        }
+    }
+
+    #[test]
+    fn test_volume_from_trait() {
+        // Test From<Volume> for u16 trait implementation
+        // VolumeValue(100) -> hardware value = 479 - 100 = 379
+        let vol_value = VolumeValue::try_from(100).unwrap();
+        let volume = Volume::Volume(vol_value);
+        let as_u16: u16 = volume.into();
+        assert_eq!(as_u16, 379);
+
+        // Test with Mute0
+        let mute0_u16: u16 = Volume::Mute0.into();
+        assert_eq!(mute0_u16, 0);
+
+        // Test with Mute511
+        let mute511_u16: u16 = Volume::Mute511.into();
+        assert_eq!(mute511_u16, 511);
+    }
+
+    #[test]
+    fn test_channel_from_bits_invalid() {
+        // Test invalid channel values (should default to LorBoth)
+        assert_eq!(Channel::from_bits(2), Channel::LorBoth);
+        assert_eq!(Channel::from_bits(3), Channel::LorBoth);
+        assert_eq!(Channel::from_bits(255), Channel::LorBoth);
+    }
+
+    #[test]
+    fn test_gain_from_bits_all_values() {
+        // Test all valid Gain values
+        assert_eq!(Gain::from_bits(0), Gain::Gain0);
+        assert_eq!(Gain::from_bits(1), Gain::Gain3db);
+        assert_eq!(Gain::from_bits(2), Gain::Gain6db);
+        assert_eq!(Gain::from_bits(3), Gain::Gain9db);
+        assert_eq!(Gain::from_bits(4), Gain::Gain12db);
+        assert_eq!(Gain::from_bits(5), Gain::Gain15db);
+        assert_eq!(Gain::from_bits(6), Gain::Gain18db);
+        assert_eq!(Gain::from_bits(7), Gain::Gain21db);
+
+        // Test invalid values (should default to Gain0)
+        assert_eq!(Gain::from_bits(8), Gain::Gain0);
+        assert_eq!(Gain::from_bits(255), Gain::Gain0);
+    }
+
+    #[test]
+    fn test_clock_div_from_bits_invalid() {
+        // Test invalid ClockDiv values (should default to Div1)
+        assert_eq!(ClockDiv::from_bits(8), ClockDiv::Div1);
+        assert_eq!(ClockDiv::from_bits(255), ClockDiv::Div1);
+    }
+
+    #[test]
+    fn test_zero_window_volt_from_bits_invalid() {
+        // Test invalid ZeroWindowVolt values (should default to Mul1)
+        assert_eq!(ZeroWindowVolt::from_bits(4), ZeroWindowVolt::Mul1);
+        assert_eq!(ZeroWindowVolt::from_bits(255), ZeroWindowVolt::Mul1);
     }
 }
